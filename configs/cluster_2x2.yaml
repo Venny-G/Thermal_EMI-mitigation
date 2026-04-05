@@ -1,0 +1,78 @@
+name: 2x2 Clustered Configuration
+description: >
+  Four thrusters arranged in a compact 2x2 cluster. Intended to highlight the
+  central overlap region where thermal and EMI margins can collapse quickly.
+bus:
+  width_m: 1.30
+  height_m: 1.05
+  grid_resolution: 260
+thrusters:
+  - name: T1
+    x_m: 0.32
+    y_m: 0.34
+    orientation_deg: 6.0
+    power_kw: 4.5
+    plume_half_angle_deg: 18.0
+    thermal_decay_m: 0.25
+    emi_decay_m: 0.17
+  - name: T2
+    x_m: 0.32
+    y_m: 0.71
+    orientation_deg: -6.0
+    power_kw: 4.5
+    plume_half_angle_deg: 18.0
+    thermal_decay_m: 0.25
+    emi_decay_m: 0.17
+  - name: T3
+    x_m: 0.50
+    y_m: 0.34
+    orientation_deg: 6.0
+    power_kw: 4.5
+    plume_half_angle_deg: 18.0
+    thermal_decay_m: 0.25
+    emi_decay_m: 0.17
+  - name: T4
+    x_m: 0.50
+    y_m: 0.71
+    orientation_deg: -6.0
+    power_kw: 4.5
+    plume_half_angle_deg: 18.0
+    thermal_decay_m: 0.25
+    emi_decay_m: 0.17
+subsystems:
+  - name: Avionics Bay
+    x_m: 0.88
+    y_m: 0.54
+    thermal_limit: 2.20
+    emi_limit: 1.15
+    criticality: 1.00
+    thermal_shielding: 0.10
+    emi_shielding: 0.15
+    failure_mode: Control electronics upset or intermittent resets.
+  - name: Battery Pack
+    x_m: 0.86
+    y_m: 0.24
+    thermal_limit: 1.80
+    emi_limit: 1.65
+    criticality: 0.90
+    thermal_shielding: 0.10
+    emi_shielding: 0.05
+    failure_mode: Thermal margin loss and accelerated cell aging.
+  - name: Star Tracker
+    x_m: 0.92
+    y_m: 0.84
+    thermal_limit: 2.00
+    emi_limit: 1.00
+    criticality: 0.95
+    thermal_shielding: 0.05
+    emi_shielding: 0.10
+    failure_mode: Attitude sensing noise or loss of lock.
+  - name: Comms Unit
+    x_m: 0.70
+    y_m: 0.54
+    thermal_limit: 2.10
+    emi_limit: 1.10
+    criticality: 0.85
+    thermal_shielding: 0.05
+    emi_shielding: 0.20
+    failure_mode: Link degradation or front-end desensitization.

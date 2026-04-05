@@ -1,0 +1,45 @@
+name: Single Thruster Baseline
+description: >
+  One thruster mounted on the aft half of the bus. Useful for showing isolated
+  thermal and EMI footprints before interaction effects are introduced.
+bus:
+  width_m: 1.20
+  height_m: 1.00
+  grid_resolution: 220
+thrusters:
+  - name: T1
+    x_m: 0.30
+    y_m: 0.50
+    orientation_deg: 0.0
+    power_kw: 4.0
+    plume_half_angle_deg: 20.0
+    thermal_decay_m: 0.28
+    emi_decay_m: 0.18
+subsystems:
+  - name: Avionics Bay
+    x_m: 0.84
+    y_m: 0.55
+    thermal_limit: 2.20
+    emi_limit: 1.20
+    criticality: 1.00
+    thermal_shielding: 0.10
+    emi_shielding: 0.15
+    failure_mode: Control electronics upset or intermittent resets.
+  - name: Battery Pack
+    x_m: 0.78
+    y_m: 0.28
+    thermal_limit: 1.80
+    emi_limit: 1.65
+    criticality: 0.90
+    thermal_shielding: 0.10
+    emi_shielding: 0.05
+    failure_mode: Thermal margin loss and accelerated cell aging.
+  - name: Comms Unit
+    x_m: 0.95
+    y_m: 0.78
+    thermal_limit: 2.00
+    emi_limit: 1.10
+    criticality: 0.85
+    thermal_shielding: 0.05
+    emi_shielding: 0.20
+    failure_mode: Link degradation or front-end desensitization.
