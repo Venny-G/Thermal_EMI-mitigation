@@ -8,6 +8,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parent
 SRC_DIR = ROOT / "src"
+# Allow local src/ imports when running as a standalone Streamlit app.
 if str(SRC_DIR) not in sys.path:
     sys.path.insert(0, str(SRC_DIR))
 
@@ -40,7 +41,27 @@ def _status_callout(report: RiskReport) -> None:
         st.success(report.summary_text)
 
 
+def _apply_ui_overrides() -> None:
+    st.markdown(
+        """
+        <style>
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"] > div,
+        div[data-baseweb="select"] > div {
+            border-radius: 0 !important;
+        }
+
+        input, textarea {
+            border-radius: 0 !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def _edit_scenario(base_scenario: Scenario) -> Scenario:
+    # Copy the preset so sidebar edits do not mutate the config template.
     scenario = copy.deepcopy(base_scenario)
 
     st.sidebar.header("Layout Controls")
@@ -66,7 +87,14 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
         step=20,
     )
 
-    power_scale = st.sidebar.number_input("Global power scale", min_value=0.60, max_value=1.50, value=1.00, step=0.05, format="%.2f")
+    power_scale = st.sidebar.number_input(
+        "Global power scale",
+        min_value=0.60,
+        max_value=1.50,
+        value=1.00,
+        step=0.05,
+        format="%.2f",
+    )
     cant_offset_deg = st.sidebar.number_input(
         "Global cant offset [deg]",
         min_value=-15.0,
@@ -89,6 +117,12 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
         cant_offset_deg=cant_offset_deg,
         spacing_scale=spacing_scale,
     )
+    # Rebuild thruster widgets when upstream layout transforms change.
+    thruster_widget_seed = (
+        f"{scenario.name}_{scenario.bus.width_m:.2f}_{scenario.bus.height_m:.2f}_"
+        f"{power_scale:.2f}_{cant_offset_deg:.1f}_{spacing_scale:.2f}"
+    )
+    subsystem_widget_seed = f"{scenario.name}_{scenario.bus.width_m:.2f}_{scenario.bus.height_m:.2f}"
 
     st.sidebar.subheader("Thrusters")
     for index, thruster in enumerate(scenario.thrusters):
@@ -100,7 +134,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(min(max(thruster.x_m, 0.0), scenario.bus.width_m)),
                 step=0.01,
                 format="%.2f",
-                key=f"{scenario.name}_{thruster.name}_x",
+                key=f"{thruster_widget_seed}_{thruster.name}_x",
             )
             thruster.y_m = st.number_input(
                 f"{thruster.name} y [m]",
@@ -109,7 +143,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(min(max(thruster.y_m, 0.0), scenario.bus.height_m)),
                 step=0.01,
                 format="%.2f",
-                key=f"{scenario.name}_{thruster.name}_y",
+                key=f"{thruster_widget_seed}_{thruster.name}_y",
             )
             thruster.orientation_deg = st.number_input(
                 f"{thruster.name} orientation [deg]",
@@ -118,7 +152,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(thruster.orientation_deg),
                 step=1.0,
                 format="%.1f",
-                key=f"{scenario.name}_{thruster.name}_orientation",
+                key=f"{thruster_widget_seed}_{thruster.name}_orientation",
             )
             thruster.power_kw = st.number_input(
                 f"{thruster.name} power [kW]",
@@ -127,7 +161,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(thruster.power_kw),
                 step=0.1,
                 format="%.1f",
-                key=f"{scenario.name}_{thruster.name}_power",
+                key=f"{thruster_widget_seed}_{thruster.name}_power",
             )
 
     st.sidebar.subheader("Subsystems")
@@ -140,7 +174,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(min(max(subsystem.x_m, 0.0), scenario.bus.width_m)),
                 step=0.01,
                 format="%.2f",
-                key=f"{scenario.name}_{subsystem.name}_x",
+                key=f"{subsystem_widget_seed}_{subsystem.name}_x",
             )
             subsystem.y_m = st.number_input(
                 f"{subsystem.name} y [m]",
@@ -149,7 +183,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(min(max(subsystem.y_m, 0.0), scenario.bus.height_m)),
                 step=0.01,
                 format="%.2f",
-                key=f"{scenario.name}_{subsystem.name}_y",
+                key=f"{subsystem_widget_seed}_{subsystem.name}_y",
             )
             subsystem.thermal_limit = st.number_input(
                 f"{subsystem.name} thermal limit",
@@ -158,7 +192,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(subsystem.thermal_limit),
                 step=0.05,
                 format="%.2f",
-                key=f"{scenario.name}_{subsystem.name}_thermal_limit",
+                key=f"{subsystem_widget_seed}_{subsystem.name}_thermal_limit",
             )
             subsystem.emi_limit = st.number_input(
                 f"{subsystem.name} EMI limit",
@@ -167,7 +201,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(subsystem.emi_limit),
                 step=0.05,
                 format="%.2f",
-                key=f"{scenario.name}_{subsystem.name}_emi_limit",
+                key=f"{subsystem_widget_seed}_{subsystem.name}_emi_limit",
             )
             subsystem.thermal_shielding = st.number_input(
                 f"{subsystem.name} thermal shielding",
@@ -176,7 +210,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(subsystem.thermal_shielding),
                 step=0.05,
                 format="%.2f",
-                key=f"{scenario.name}_{subsystem.name}_thermal_shielding",
+                key=f"{subsystem_widget_seed}_{subsystem.name}_thermal_shielding",
             )
             subsystem.emi_shielding = st.number_input(
                 f"{subsystem.name} EMI shielding",
@@ -185,7 +219,7 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 value=float(subsystem.emi_shielding),
                 step=0.05,
                 format="%.2f",
-                key=f"{scenario.name}_{subsystem.name}_emi_shielding",
+                key=f"{subsystem_widget_seed}_{subsystem.name}_emi_shielding",
             )
     return scenario
 
@@ -233,13 +267,20 @@ def _select_screening_weights() -> tuple[str, float, float]:
             format="%.2f",
         )
         if thermal_weight == 0.0 and emi_weight == 0.0:
-            st.sidebar.warning("At least one weight needs to be non-zero. Resetting to balanced weights.")
+            st.sidebar.warning(
+                "At least one weight needs to be non-zero. Resetting to balanced weights."
+            )
             return "Balanced", *MISSION_PROFILES["Balanced"]
         return profile, thermal_weight, emi_weight
     return profile, *MISSION_PROFILES[profile]
 
 
-def _physics_checks_table(scenario: Scenario, thermal_contributions, emi_contributions, report: RiskReport) -> pd.DataFrame:
+def _physics_checks_table(
+    scenario: Scenario,
+    thermal_contributions,
+    emi_contributions,
+    report: RiskReport,
+) -> pd.DataFrame:
     checks = run_physics_checks(scenario, thermal_contributions, emi_contributions, report)
     rows = []
     for check in checks:
@@ -254,11 +295,11 @@ def _physics_checks_table(scenario: Scenario, thermal_contributions, emi_contrib
     return pd.DataFrame(rows)
 
 
-def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
-    st.subheader("What the math is doing")
+def _render_model_overview_tab(report: RiskReport, screening_profile: str) -> None:
+    st.subheader("Model overview")
     st.write(
-        "This tab is meant to be readable. The model is not pretending to be a full plume / CFD / EM solve. "
-        "It is a directional risk proxy built from simple terms that follow the geometry of a clustered Hall thruster layout."
+        "This tab summarizes the simplified screening model used in the app. "
+        "It is a directional proxy for thermal and EMI exposure in clustered Hall thruster layouts."
     )
 
     st.markdown("**1. Thruster-aligned coordinates**")
@@ -269,13 +310,12 @@ def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
         """
     )
     st.write(
-        "For each thruster, the app rotates the spacecraft plane into a local frame. "
-        "`s_i` is downrange along the plume direction and `c_i` is crossrange."
+        "The bus plane is rotated into a thruster-aligned frame. "
+        "`s_i` is downrange and `c_i` is crossrange."
     )
     st.markdown(
         "- `\\theta_i` is the thruster pointing or cant angle.\n"
-        "- `\\phi_i` below is the plume half-angle used to control spread.\n"
-        "- Those are separate quantities in the code and should not be confused."
+        "- `\\phi_i` is the plume half-angle used to control spread."
     )
 
     st.markdown("**2. Thermal loading proxy**")
@@ -290,7 +330,7 @@ def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
         """
     )
     st.write(
-        "This says the heat effect is strongest near the thruster, falls with distance, and stays stronger inside the plume direction than far off-axis."
+        "Thermal loading is strongest near the thruster and decays with downrange distance and crossrange offset."
     )
     st.latex(
         r"""
@@ -298,7 +338,7 @@ def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
         """
     )
     st.write(
-        "So the plume width grows with downrange distance, but it is clipped to a minimum width so the map does not collapse into a razor-thin line."
+        "Plume width grows with distance and is clipped to a minimum value."
     )
 
     st.markdown("**3. Magnetic / EMI proxy**")
@@ -312,8 +352,7 @@ def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
         """
     )
     st.write(
-        "The first term is a dipole-like near-thruster magnetic field proxy. "
-        "The other terms keep some directional plume influence and side-lobe spread."
+        "The first term is a dipole-like near-field term. The others control directional decay and off-axis spread."
     )
     st.latex(
         r"""
@@ -321,7 +360,7 @@ def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
         """
     )
     st.write(
-        "The EMI tail also widens with distance, but it uses a slightly different width rule than the thermal map."
+        "The EMI envelope widens with distance using a separate width rule."
     )
 
     st.markdown("**4. Subsystem exposure and failure rule**")
@@ -348,59 +387,58 @@ def _render_physics_tab(report: RiskReport, profile_name: str) -> None:
         """
     )
     st.write(
-        "So the app is doing two things: it checks each subsystem directly against its thresholds, "
-        "and it also paints a combined screening map for the whole bus."
+        "Subsystems are checked against their own thresholds, and the bus is also shown as a combined score field."
     )
     st.write(
-        f"Right now the selected profile is **{profile_name}**, which means "
+        f"Selected profile: **{screening_profile}**. "
+        f"Current weights are "
         f"$w_t = {report.thermal_weight:.2f}$ and $w_e = {report.emi_weight:.2f}$."
-    )
-    st.write(
-        "Those weights are mission-priority settings, not physics constants. They tell the app how much to care about thermal versus EMI when making one combined picture."
     )
     st.markdown(
         f"- `q_ref` is the median subsystem thermal limit for the current scenario: **{report.thermal_reference:.2f}**\n"
         f"- `B_ref` is the median subsystem EMI limit for the current scenario: **{report.emi_reference:.2f}**"
     )
     st.write(
-        "So the integration score is scenario-normalized against the tolerance table you gave the app. "
-        "It is not normalized to the map maximum, and it is not a universal physical constant."
+        "The integration score is normalized against the scenario subsystem limits, not against the map maximum."
     )
 
-    st.markdown("**5. Why this is a fair first-pass physics model**")
+    st.markdown("**5. Why this screening model is physically motivated**")
     st.markdown(
-        "- Hall thruster plumes are directional and have measurable divergence, so using a plume-aligned field envelope is physically reasonable.\n"
-        "- Hall thruster plume profiles are not perfectly Gaussian near centerline, so the app treats the Gaussian-like spread only as a simple shape function, not as exact truth.\n"
-        "- Spacecraft integration really does care about both plume-driven surface effects and EMI/EMC exposure, so combining thermal and EMI views is the right systems framing."
+        "- Hall thruster plumes are directional, so a plume-aligned coordinate frame is a reasonable first step.\n"
+        "- Downrange decay and widening spread capture the main layout effect of plume exposure.\n"
+        "- Thermal and EMI thresholds are handled at the subsystem level rather than hidden inside the field model."
     )
 
-    with st.expander("Literature grounding used for this draft"):
+    with st.expander("Reference notes"):
         st.markdown(
-            "- Goebel and Katz, *Ion and Hall Thruster Plumes* (JPL): Hall thruster plumes have large angular divergence and can change spacecraft surface optical, thermal, and electrical properties.\n"
-            "- NASA/TM-2018-219948: Hall thruster beam-current profiles show a centerline inflection, which is why a simple Gaussian should be treated as an approximation, not an exact plume law.\n"
-            "- NASA Glenn thermal characterization of the NASA-300MS Hall thruster: magnetic topology and shielding materially change thermal/plume behavior.\n"
-            "- NASA JSC EMI/EMC guidance: EMI/EMC is a mission-level concern for communications, avionics, guidance, and other spacecraft electronics."
+            "- Goebel and Katz: Hall thruster plumes are directional and can affect spacecraft surfaces.\n"
+            "- NASA beam-profile data shows centerline structure, so the Gaussian envelope here is used as a simple shape approximation.\n"
+            "- EMI/EMC remains a spacecraft integration concern for avionics and communications."
         )
     with st.expander("Calibration terms in the model"):
         st.markdown(
-            "- The backflow term in the thermal map is a shaping term that keeps the upstream region from going unrealistically to zero.\n"
-            "- The near-field thermal term is a local hotspot term for danger-close loading near the thruster.\n"
-            "- The EMI side-lobe term is a shaping term that broadens the map so it behaves more like a screening envelope than a needle-thin source.\n"
-            "- These are tuning terms, not first-principles plasma closures."
+            "- Backflow term: prevents the upstream region from dropping unrealistically to zero.\n"
+            "- Near-field term: captures local hotspot behavior near the thruster.\n"
+            "- Side-lobe EMI term: broadens the screening envelope away from the centerline.\n"
+            "- These are tuning terms, not derived plasma closures."
         )
 
 
 def main() -> None:
     st.set_page_config(page_title="Clustered EP Risk Mapper", layout="wide")
-    st.title("Clustered Hall Thruster Risk Demo")
-    st.write("First draft UI. The point is to move thrusters around and see where the hot zones, EMI zones, and failure regions show up.")
+    _apply_ui_overrides()
+    st.title("Clustered Hall Thruster Thermal / EMI Risk Mapper")
+    st.write(
+        "Interactive screening tool for visualizing thermal loading, "
+        "EMI exposure, and subsystem risk in clustered Hall thruster layouts."
+    )
 
     scenario_map = list_scenarios(CONFIG_DIR)
     scenario_names = list(scenario_map)
     default_index = scenario_names.index(DEFAULT_SCENARIO) if DEFAULT_SCENARIO in scenario_names else 0
     selection = st.sidebar.selectbox("Preset scenario", scenario_names, index=default_index)
     scenario = _edit_scenario(load_scenario(scenario_map[selection]))
-    profile_name, thermal_weight, emi_weight = _select_screening_weights()
+    screening_profile, thermal_weight, emi_weight = _select_screening_weights()
 
     grid_x, grid_y = make_grid(scenario.bus)
     thermal_field, thermal_contributions = compute_thermal_field(grid_x, grid_y, scenario.thrusters)
@@ -420,8 +458,8 @@ def main() -> None:
     _status_callout(report)
     st.write(scenario.description)
 
-    left_info, right_info = st.columns(2)
-    with left_info:
+    summary_col, metrics_col = st.columns(2)
+    with summary_col:
         st.write(f"**Current layout state:** {report.overall_state.title()}")
         st.write(
             f"**Peak thermal zone:** {report.max_thermal_peak.value:.2f} at "
@@ -431,8 +469,8 @@ def main() -> None:
             f"**Peak EMI zone:** {report.max_emi_peak.value:.2f} at "
             f"({report.max_emi_peak.x_m:.2f} m, {report.max_emi_peak.y_m:.2f} m)"
         )
-    with right_info:
-        st.write(f"**Score profile:** {profile_name}")
+    with metrics_col:
+        st.write(f"**Score profile:** {screening_profile}")
         st.write(f"**Critical bus area:** {report.critical_area_fraction:.0%}")
         st.write(f"**Caution bus area:** {report.caution_area_fraction:.0%}")
         st.write(
@@ -440,10 +478,10 @@ def main() -> None:
         )
 
     tab_thermal, tab_emi, tab_combined, tab_physics = st.tabs(
-        ["Thermal map", "EMI map", "Integration score", "Physics notes"]
+        ["Thermal map", "EMI map", "Integration score", "Model overview"]
     )
     with tab_thermal:
-        st.write("This is the plume-shaped thermal loading proxy across the spacecraft bus.")
+        st.write("Thermal loading proxy across the bus.")
         st.plotly_chart(
             make_field_figure(
                 scenario,
@@ -460,7 +498,10 @@ def main() -> None:
         )
 
     with tab_emi:
-        st.write("This is the simplified magnetic / EMI exposure proxy. It is strongest close to the thrusters and then decays away.")
+        st.write(
+            "EMI exposure proxy across the bus. Highest values occur near the thrusters "
+            "and along the directional field tail."
+        )
         st.plotly_chart(
             make_field_figure(
                 scenario,
@@ -480,7 +521,7 @@ def main() -> None:
         summary_col, details_col = st.columns([1.3, 1.0])
         with summary_col:
             st.write(
-                "This is the integration screening score. It is a weighted decision layer built on top of the thermal and EMI proxies, not a direct physics field."
+                "Combined score field used for layout screening."
             )
             st.plotly_chart(
                 make_field_figure(
@@ -503,14 +544,14 @@ def main() -> None:
             )
             st.subheader("Failure Triggers")
             st.write(
-                "A subsystem is flagged as critical when its thermal or EMI exposure exceeds its configured limit. "
-                "The overall layout is also flagged if more than 12% of the bus crosses the combined critical threshold."
+                "A subsystem is critical when its thermal or EMI ratio exceeds 1. "
+                "The layout is also critical if more than 12% of the bus exceeds the critical score threshold."
             )
             critical_assessments = [assessment for assessment in report.assessments if assessment.overall_state == "critical"]
             if critical_assessments:
                 for assessment in critical_assessments:
                     st.markdown(
-                        f"- **{assessment.name}**: {assessment.dominant_driver} driven exceedance from "
+                        f"- **{assessment.name}**: dominant exceedance is {assessment.dominant_driver} from "
                         f"{assessment.dominant_thruster}. Likely outcome: {assessment.likely_failure_mode}"
                     )
             else:
@@ -521,7 +562,7 @@ def main() -> None:
                 st.markdown(f"- {recommendation}")
 
     with tab_physics:
-        _render_physics_tab(report, profile_name)
+        _render_model_overview_tab(report, screening_profile)
         st.subheader("Quick sanity checks for this exact run")
         st.dataframe(
             _physics_checks_table(scenario, thermal_contributions, emi_contributions, report),
@@ -529,7 +570,7 @@ def main() -> None:
             hide_index=True,
         )
         st.write(
-            "These checks do not prove the model is high-fidelity. They just confirm that the simplified model behaves in the physically sensible way we say it does."
+            "These checks verify that the screening model behaves consistently with its intended assumptions."
         )
 
     bottom_left, bottom_right = st.columns([1.4, 1.0])
@@ -539,17 +580,16 @@ def main() -> None:
     with bottom_right:
         st.subheader("Model Notes")
         st.write(
-            "This is meant to look like a first-pass engineering demo, not a finished mission tool. "
-            "The physics is simplified, but the risk logic and cause-and-effect are explicit."
+            "This is a screening model with user-configured subsystem limits. "
+            "Outputs are dimensionless indices."
         )
         with st.expander("Model assumptions"):
             st.markdown(
                 "- Thermal loading uses directional plume decay plus local near-field heating.\n"
                 "- EMI uses a dipole-like near-field term plus a directional tail.\n"
                 "- Overlapping fields accumulate linearly.\n"
-                "- Shielding is modeled as a local reduction factor on subsystem exposure.\n"
-                "- Outputs are dimensionless indices for comparison, not high-fidelity absolute loads.\n"
-                "- The integration score is a tunable decision layer, not a physical conservation law."
+                "- Shielding is applied as a local reduction factor on subsystem exposure.\n"
+                "- Outputs are dimensionless indices."
             )
 
 

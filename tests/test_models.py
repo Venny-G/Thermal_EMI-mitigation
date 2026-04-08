@@ -4,6 +4,7 @@ from clustered_ep_sim.models.emi import compute_emi_field
 from clustered_ep_sim.models.layout import BusConfig, Scenario, SubsystemConfig, ThrusterConfig, make_grid
 from clustered_ep_sim.models.risk import classify_ratio, evaluate_risk
 from clustered_ep_sim.models.thermal import compute_thermal_field
+from clustered_ep_sim.models.layout import adjust_cluster_layout
 
 
 def _single_thruster() -> ThrusterConfig:
@@ -154,3 +155,26 @@ def test_integration_weights_are_normalized() -> None:
     assert report.emi_weight == 0.3
     assert report.thermal_reference == 1.5
     assert report.emi_reference == 1.0
+
+
+def test_global_cant_offset_preserves_opposing_cluster_rows() -> None:
+    scenario = Scenario(
+        name="cant",
+        description="",
+        bus=BusConfig(width_m=1.0, height_m=1.0, grid_resolution=100),
+        thrusters=[
+            ThrusterConfig(name="T1", x_m=0.3, y_m=0.3, orientation_deg=6.0, power_kw=4.0),
+            ThrusterConfig(name="T2", x_m=0.3, y_m=0.7, orientation_deg=-6.0, power_kw=4.0),
+            ThrusterConfig(name="T3", x_m=0.5, y_m=0.3, orientation_deg=6.0, power_kw=4.0),
+            ThrusterConfig(name="T4", x_m=0.5, y_m=0.7, orientation_deg=-6.0, power_kw=4.0),
+        ],
+        subsystems=[],
+    )
+
+    adjusted = adjust_cluster_layout(scenario, cant_offset_deg=4.0)
+    orientations = {thruster.name: thruster.orientation_deg for thruster in adjusted.thrusters}
+
+    assert orientations["T1"] == 10.0
+    assert orientations["T3"] == 10.0
+    assert orientations["T2"] == -10.0
+    assert orientations["T4"] == -10.0

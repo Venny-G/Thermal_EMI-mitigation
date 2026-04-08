@@ -92,13 +92,20 @@ def adjust_cluster_layout(
     for thruster in scenario.thrusters:
         dx = thruster.x_m - center_x
         dy = thruster.y_m - center_y
+        # Preserve mirrored canting for clustered rows instead of rotating every thruster the same way.
+        if abs(thruster.orientation_deg) > 1e-9:
+            cant_direction = 1.0 if thruster.orientation_deg > 0.0 else -1.0
+        elif abs(dy) > 1e-9:
+            cant_direction = -1.0 if dy > 0.0 else 1.0
+        else:
+            cant_direction = 1.0
         thrusters.append(
             replace(
                 thruster,
                 x_m=center_x + dx * spacing_scale,
                 y_m=center_y + dy * spacing_scale,
                 power_kw=thruster.power_kw * power_scale,
-                orientation_deg=thruster.orientation_deg + cant_offset_deg,
+                orientation_deg=thruster.orientation_deg + cant_direction * cant_offset_deg,
             )
         )
 
