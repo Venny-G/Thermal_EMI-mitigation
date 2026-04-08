@@ -39,7 +39,8 @@ def emi_contribution(
     The field combines a near-thruster magnetic term with a directional tail.
     It is a quick-look integration model, not a full electromagnetic solution.
     """
-
+# Empirical scaling factors chosen to balance near-field dominance,
+# directional decay, and lateral spread for integration screening.
     downrange, crossrange, distance = _thruster_coordinates(grid_x, grid_y, thruster)
     forward_distance = np.clip(downrange, 0.0, None)
     plume_angle = math.radians(thruster.plume_half_angle_deg)
