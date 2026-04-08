@@ -19,14 +19,20 @@ STATUS_COLORS = {
 def _subsystem_hover_text(report: RiskReport) -> dict[str, str]:
     hover = {}
     for assessment in report.assessments:
-        hover[assessment.name] = (
+        hover_text = (
             f"{assessment.name}<br>"
             f"Overall: {assessment.overall_state.title()}<br>"
-            f"Thermal ratio: {assessment.thermal_ratio:.2f}<br>"
-            f"EMI ratio: {assessment.emi_ratio:.2f}<br>"
+            f"Thermal ratio (screening): {assessment.thermal_ratio_screening:.2f}<br>"
+            f"EMI ratio (screening): {assessment.emi_ratio_screening:.2f}<br>"
             f"Dominant driver: {assessment.dominant_driver}<br>"
-            f"Dominant thruster: {assessment.dominant_thruster}"
+            f"Dominant thermal thruster: {assessment.dominant_thermal_thruster}<br>"
+            f"Dominant EMI thruster: {assessment.dominant_emi_thruster}"
         )
+        if assessment.q_after_shield_w_m2 is not None:
+            hover_text += f"<br>Thermal after shield: {assessment.q_after_shield_w_m2:.1f} W/m^2"
+        if assessment.b_after_shield_uT is not None:
+            hover_text += f"<br>EMI after shield: {assessment.b_after_shield_uT:.1f} uT"
+        hover[assessment.name] = hover_text
     return hover
 
 

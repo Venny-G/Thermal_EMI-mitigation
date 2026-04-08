@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from clustered_ep_sim.models.emi import compute_emi_field
 from clustered_ep_sim.models.layout import BusConfig, Scenario, SubsystemConfig, ThrusterConfig, make_grid
 from clustered_ep_sim.models.risk import classify_ratio, evaluate_risk
@@ -178,3 +180,46 @@ def test_global_cant_offset_preserves_opposing_cluster_rows() -> None:
     assert orientations["T3"] == 10.0
     assert orientations["T2"] == -10.0
     assert orientations["T4"] == -10.0
+
+
+def test_subsystem_thruster_contributions_sum_to_sampled_fields() -> None:
+    bus = BusConfig(width_m=1.0, height_m=1.0, grid_resolution=220)
+    thrusters = [
+        ThrusterConfig(name="T1", x_m=0.20, y_m=0.42, orientation_deg=0.0, power_kw=4.0),
+        ThrusterConfig(name="T2", x_m=0.20, y_m=0.58, orientation_deg=0.0, power_kw=3.0),
+    ]
+    scenario = Scenario(
+        name="contributions",
+        description="",
+        bus=bus,
+        thrusters=thrusters,
+        subsystems=[
+            SubsystemConfig(
+                name="Payload",
+                x_m=0.55,
+                y_m=0.50,
+                thermal_limit=1.5,
+                emi_limit=1.0,
+            )
+        ],
+    )
+
+    grid_x, grid_y = make_grid(bus)
+    thermal_field, thermal_contributions = compute_thermal_field(grid_x, grid_y, thrusters)
+    emi_field, emi_contributions = compute_emi_field(grid_x, grid_y, thrusters)
+    report = evaluate_risk(
+        scenario,
+        grid_x,
+        grid_y,
+        thermal_field,
+        thermal_contributions,
+        emi_field,
+        emi_contributions,
+    )
+
+    assessment = report.assessments[0]
+    assert len(assessment.thruster_contributions) == 2
+    assert sum(item.thermal_proxy for item in assessment.thruster_contributions) == pytest.approx(assessment.thermal_raw)
+    assert sum(item.emi_proxy for item in assessment.thruster_contributions) == pytest.approx(assessment.emi_raw)
+    assert assessment.dominant_thermal_thruster in {"T1", "T2"}
+    assert assessment.dominant_emi_thruster in {"T1", "T2"}

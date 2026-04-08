@@ -7,7 +7,14 @@ from typing import Any
 
 import yaml
 
-from clustered_ep_sim.models.layout import BusConfig, Scenario, SubsystemConfig, ThrusterConfig
+from clustered_ep_sim.models.layout import (
+    BusConfig,
+    EmiCalibrationConfig,
+    Scenario,
+    SubsystemConfig,
+    ThermalCalibrationConfig,
+    ThrusterConfig,
+)
 
 
 def _load_yaml(path: Path) -> dict[str, Any]:
@@ -18,12 +25,84 @@ def _load_yaml(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    return float(value)
+
+
+def _parse_thermal_calibration(payload: dict[str, Any]) -> ThermalCalibrationConfig:
+    calibration_block = payload.get("calibration", {})
+    thermal_block = calibration_block.get("thermal", {}) if isinstance(calibration_block, dict) else {}
+    enabled = bool(
+        thermal_block.get(
+            "enabled",
+            payload.get("thermal_calibration_enabled", False),
+        )
+    )
+    return ThermalCalibrationConfig(
+        enabled=enabled,
+        reference_value_w_m2=_optional_float(
+            thermal_block.get(
+                "reference_value_W_m2",
+                payload.get("thermal_reference_value_W_m2"),
+            )
+        ),
+        reference_location_x_m=_optional_float(
+            thermal_block.get(
+                "reference_location_x_m",
+                payload.get("thermal_reference_location_x_m"),
+            )
+        ),
+        reference_location_y_m=_optional_float(
+            thermal_block.get(
+                "reference_location_y_m",
+                payload.get("thermal_reference_location_y_m"),
+            )
+        ),
+    )
+
+
+def _parse_emi_calibration(payload: dict[str, Any]) -> EmiCalibrationConfig:
+    calibration_block = payload.get("calibration", {})
+    emi_block = calibration_block.get("emi", {}) if isinstance(calibration_block, dict) else {}
+    enabled = bool(
+        emi_block.get(
+            "enabled",
+            payload.get("emi_calibration_enabled", False),
+        )
+    )
+    return EmiCalibrationConfig(
+        enabled=enabled,
+        reference_value_uT=_optional_float(
+            emi_block.get(
+                "reference_value_uT",
+                payload.get("emi_reference_value_uT"),
+            )
+        ),
+        reference_location_x_m=_optional_float(
+            emi_block.get(
+                "reference_location_x_m",
+                payload.get("emi_reference_location_x_m"),
+            )
+        ),
+        reference_location_y_m=_optional_float(
+            emi_block.get(
+                "reference_location_y_m",
+                payload.get("emi_reference_location_y_m"),
+            )
+        ),
+    )
+
+
 def scenario_from_dict(payload: dict[str, Any]) -> Scenario:
     """Build a typed scenario from a raw mapping."""
 
     bus_payload = payload["bus"]
     thruster_payloads = payload["thrusters"]
     subsystem_payloads = payload["subsystems"]
+    thermal_calibration = _parse_thermal_calibration(payload)
+    emi_calibration = _parse_emi_calibration(payload)
 
     bus = BusConfig(
         width_m=float(bus_payload["width_m"]),
@@ -57,10 +136,44 @@ def scenario_from_dict(payload: dict[str, Any]) -> Scenario:
             criticality=float(item.get("criticality", 1.0)),
             thermal_shielding=float(item.get("thermal_shielding", 0.0)),
             emi_shielding=float(item.get("emi_shielding", 0.0)),
+            thermal_limit_w_m2=_optional_float(item.get("thermal_limit_W_m2")),
+            emi_limit_uT=_optional_float(item.get("emi_limit_uT")),
             failure_mode=str(item.get("failure_mode", "")),
         )
         for item in subsystem_payloads
     ]
+
+    if thermal_calibration.enabled:
+        missing = [
+            name
+            for name, value in (
+                ("thermal_reference_value_W_m2", thermal_calibration.reference_value_w_m2),
+                ("thermal_reference_location_x_m", thermal_calibration.reference_location_x_m),
+                ("thermal_reference_location_y_m", thermal_calibration.reference_location_y_m),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(
+                "Thermal calibration was enabled but is missing required values: "
+                + ", ".join(missing)
+            )
+
+    if emi_calibration.enabled:
+        missing = [
+            name
+            for name, value in (
+                ("emi_reference_value_uT", emi_calibration.reference_value_uT),
+                ("emi_reference_location_x_m", emi_calibration.reference_location_x_m),
+                ("emi_reference_location_y_m", emi_calibration.reference_location_y_m),
+            )
+            if value is None
+        ]
+        if missing:
+            raise ValueError(
+                "EMI calibration was enabled but is missing required values: "
+                + ", ".join(missing)
+            )
 
     return Scenario(
         name=str(payload["name"]),
@@ -68,6 +181,9 @@ def scenario_from_dict(payload: dict[str, Any]) -> Scenario:
         bus=bus,
         thrusters=thrusters,
         subsystems=subsystems,
+        source_note=str(payload.get("source_note", "")),
+        thermal_calibration=thermal_calibration,
+        emi_calibration=emi_calibration,
     )
 
 

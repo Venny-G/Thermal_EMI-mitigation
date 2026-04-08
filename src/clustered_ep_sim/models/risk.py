@@ -22,6 +22,31 @@ class FieldPeak:
 
 
 @dataclass(slots=True)
+class CalibrationSummary:
+    """Metadata for one proxy-to-physical field calibration."""
+
+    enabled: bool
+    reference_value: float | None
+    reference_x_m: float | None
+    reference_y_m: float | None
+    reference_proxy_value: float | None
+    scale_factor: float | None
+
+
+@dataclass(slots=True)
+class ThrusterContribution:
+    """Per-thruster contribution at one subsystem sample point."""
+
+    thruster_name: str
+    thermal_proxy: float
+    thermal_fraction: float
+    emi_proxy: float
+    emi_fraction: float
+    q_incident_w_m2: float | None
+    b_before_shield_uT: float | None
+
+
+@dataclass(slots=True)
 class SubsystemAssessment:
     """Risk summary for a single subsystem."""
 
@@ -40,7 +65,20 @@ class SubsystemAssessment:
     combined_score: float
     dominant_driver: str
     dominant_thruster: str
+    dominant_thermal_thruster: str
+    dominant_emi_thruster: str
     likely_failure_mode: str
+    thermal_ratio_screening: float
+    emi_ratio_screening: float
+    thermal_ratio_physical: float | None
+    emi_ratio_physical: float | None
+    q_proxy_sample: float
+    b_proxy_sample: float
+    q_incident_w_m2: float | None
+    q_after_shield_w_m2: float | None
+    b_before_shield_uT: float | None
+    b_after_shield_uT: float | None
+    thruster_contributions: list[ThrusterContribution]
 
 
 @dataclass(slots=True)
@@ -49,10 +87,14 @@ class RiskReport:
 
     overall_state: str
     combined_field: np.ndarray
+    thermal_incident_field_w_m2: np.ndarray | None
+    emi_before_shield_field_uT: np.ndarray | None
     thermal_weight: float
     emi_weight: float
     thermal_reference: float
     emi_reference: float
+    thermal_calibration: CalibrationSummary
+    emi_calibration: CalibrationSummary
     assessments: list[SubsystemAssessment]
     max_thermal_peak: FieldPeak
     max_emi_peak: FieldPeak
@@ -118,6 +160,43 @@ def _field_peak(field: np.ndarray, x_axis: np.ndarray, y_axis: np.ndarray) -> Fi
     return FieldPeak(x_m=float(x_axis[x_index]), y_m=float(y_axis[y_index]), value=float(field[y_index, x_index]))
 
 
+def _calibrate_field(
+    field: np.ndarray,
+    x_axis: np.ndarray,
+    y_axis: np.ndarray,
+    *,
+    enabled: bool,
+    reference_value: float | None,
+    reference_x_m: float | None,
+    reference_y_m: float | None,
+) -> tuple[CalibrationSummary, np.ndarray | None]:
+    if not enabled:
+        return CalibrationSummary(False, None, None, None, None, None), None
+    if reference_value is None or reference_x_m is None or reference_y_m is None:
+        raise ValueError("Calibration is enabled but the reference value or location is missing.")
+
+    reference_proxy_value = bilinear_sample(
+        field,
+        x_axis,
+        y_axis,
+        reference_x_m,
+        reference_y_m,
+    )
+    if reference_proxy_value <= 0.0:
+        raise ValueError("Calibration reference point must sample a positive proxy field value.")
+
+    scale_factor = reference_value / reference_proxy_value
+    calibration = CalibrationSummary(
+        enabled=True,
+        reference_value=reference_value,
+        reference_x_m=reference_x_m,
+        reference_y_m=reference_y_m,
+        reference_proxy_value=reference_proxy_value,
+        scale_factor=scale_factor,
+    )
+    return calibration, field * scale_factor
+
+
 def _dominant_thruster_name(
     scenario: Scenario,
     thermal_samples: Sequence[float],
@@ -132,6 +211,42 @@ def _dominant_thruster_name(
     return scenario.thrusters[dominant_index].name
 
 
+def _build_thruster_contributions(
+    scenario: Scenario,
+    thermal_samples: Sequence[float],
+    emi_samples: Sequence[float],
+    thermal_scale_factor_w_m2: float | None,
+    emi_scale_factor_uT: float | None,
+) -> list[ThrusterContribution]:
+    thermal_total = float(np.sum(thermal_samples))
+    emi_total = float(np.sum(emi_samples))
+    contributions: list[ThrusterContribution] = []
+
+    for thruster, thermal_value, emi_value in zip(
+        scenario.thrusters,
+        thermal_samples,
+        emi_samples,
+        strict=False,
+    ):
+        contributions.append(
+            ThrusterContribution(
+                thruster_name=thruster.name,
+                thermal_proxy=float(thermal_value),
+                thermal_fraction=0.0 if thermal_total <= 0.0 else float(thermal_value) / thermal_total,
+                emi_proxy=float(emi_value),
+                emi_fraction=0.0 if emi_total <= 0.0 else float(emi_value) / emi_total,
+                q_incident_w_m2=(
+                    None if thermal_scale_factor_w_m2 is None else float(thermal_value) * thermal_scale_factor_w_m2
+                ),
+                b_before_shield_uT=(
+                    None if emi_scale_factor_uT is None else float(emi_value) * emi_scale_factor_uT
+                ),
+            )
+        )
+
+    return contributions
+
+
 def _assessment_for_subsystem(
     scenario: Scenario,
     subsystem: SubsystemConfig,
@@ -141,6 +256,8 @@ def _assessment_for_subsystem(
     thermal_contributions: Sequence[np.ndarray],
     emi_field: np.ndarray,
     emi_contributions: Sequence[np.ndarray],
+    thermal_scale_factor_w_m2: float | None,
+    emi_scale_factor_uT: float | None,
 ) -> SubsystemAssessment:
     thermal_raw = bilinear_sample(thermal_field, x_axis, y_axis, subsystem.x_m, subsystem.y_m)
     emi_raw = bilinear_sample(emi_field, x_axis, y_axis, subsystem.x_m, subsystem.y_m)
@@ -155,14 +272,41 @@ def _assessment_for_subsystem(
     if thermal_state == "caution" and emi_state == "caution" and combined_score >= 1.0:
         overall_state = "critical"
     dominant_driver = "thermal" if thermal_ratio >= emi_ratio else "EMI"
-    dominant_thruster = _dominant_thruster_name(
+    thermal_samples = _sample_contributions(thermal_contributions, x_axis, y_axis, subsystem)
+    emi_samples = _sample_contributions(emi_contributions, x_axis, y_axis, subsystem)
+    dominant_thermal_thruster = _dominant_thruster_name(
         scenario,
-        _sample_contributions(thermal_contributions, x_axis, y_axis, subsystem),
-        _sample_contributions(emi_contributions, x_axis, y_axis, subsystem),
-        thermal_ratio,
-        emi_ratio,
+        thermal_samples,
+        emi_samples,
+        1.0,
+        0.0,
     )
+    dominant_emi_thruster = _dominant_thruster_name(
+        scenario,
+        thermal_samples,
+        emi_samples,
+        0.0,
+        1.0,
+    )
+    dominant_thruster = dominant_thermal_thruster if thermal_ratio >= emi_ratio else dominant_emi_thruster
     failure_mode = subsystem.failure_mode or "elevated integration risk."
+    q_incident_w_m2 = None if thermal_scale_factor_w_m2 is None else thermal_raw * thermal_scale_factor_w_m2
+    q_after_shield_w_m2 = None if thermal_scale_factor_w_m2 is None else thermal_effective * thermal_scale_factor_w_m2
+    b_before_shield_uT = None if emi_scale_factor_uT is None else emi_raw * emi_scale_factor_uT
+    b_after_shield_uT = None if emi_scale_factor_uT is None else emi_effective * emi_scale_factor_uT
+    thermal_ratio_physical = None
+    emi_ratio_physical = None
+    if q_after_shield_w_m2 is not None and subsystem.thermal_limit_w_m2 is not None:
+        thermal_ratio_physical = q_after_shield_w_m2 / subsystem.thermal_limit_w_m2
+    if b_after_shield_uT is not None and subsystem.emi_limit_uT is not None:
+        emi_ratio_physical = b_after_shield_uT / subsystem.emi_limit_uT
+    thruster_contributions = _build_thruster_contributions(
+        scenario,
+        thermal_samples,
+        emi_samples,
+        thermal_scale_factor_w_m2,
+        emi_scale_factor_uT,
+    )
     return SubsystemAssessment(
         name=subsystem.name,
         x_m=subsystem.x_m,
@@ -179,7 +323,20 @@ def _assessment_for_subsystem(
         combined_score=combined_score,
         dominant_driver=dominant_driver,
         dominant_thruster=dominant_thruster,
+        dominant_thermal_thruster=dominant_thermal_thruster,
+        dominant_emi_thruster=dominant_emi_thruster,
         likely_failure_mode=failure_mode,
+        thermal_ratio_screening=thermal_ratio,
+        emi_ratio_screening=emi_ratio,
+        thermal_ratio_physical=thermal_ratio_physical,
+        emi_ratio_physical=emi_ratio_physical,
+        q_proxy_sample=thermal_raw,
+        b_proxy_sample=emi_raw,
+        q_incident_w_m2=q_incident_w_m2,
+        q_after_shield_w_m2=q_after_shield_w_m2,
+        b_before_shield_uT=b_before_shield_uT,
+        b_after_shield_uT=b_after_shield_uT,
+        thruster_contributions=thruster_contributions,
     )
 
 
@@ -270,6 +427,24 @@ def evaluate_risk(
     thermal_reference = float(np.median([subsystem.thermal_limit for subsystem in scenario.subsystems]))
     emi_reference = float(np.median([subsystem.emi_limit for subsystem in scenario.subsystems]))
     combined_field = thermal_weight * (thermal_field / thermal_reference) + emi_weight * (emi_field / emi_reference)
+    thermal_calibration, thermal_incident_field_w_m2 = _calibrate_field(
+        thermal_field,
+        x_axis,
+        y_axis,
+        enabled=scenario.thermal_calibration.enabled,
+        reference_value=scenario.thermal_calibration.reference_value_w_m2,
+        reference_x_m=scenario.thermal_calibration.reference_location_x_m,
+        reference_y_m=scenario.thermal_calibration.reference_location_y_m,
+    )
+    emi_calibration, emi_before_shield_field_uT = _calibrate_field(
+        emi_field,
+        x_axis,
+        y_axis,
+        enabled=scenario.emi_calibration.enabled,
+        reference_value=scenario.emi_calibration.reference_value_uT,
+        reference_x_m=scenario.emi_calibration.reference_location_x_m,
+        reference_y_m=scenario.emi_calibration.reference_location_y_m,
+    )
 
     assessments = [
         _assessment_for_subsystem(
@@ -281,6 +456,8 @@ def evaluate_risk(
             thermal_contributions,
             emi_field,
             emi_contributions,
+            thermal_calibration.scale_factor,
+            emi_calibration.scale_factor,
         )
         for subsystem in scenario.subsystems
     ]
@@ -303,10 +480,14 @@ def evaluate_risk(
     return RiskReport(
         overall_state=overall_state,
         combined_field=combined_field,
+        thermal_incident_field_w_m2=thermal_incident_field_w_m2,
+        emi_before_shield_field_uT=emi_before_shield_field_uT,
         thermal_weight=thermal_weight,
         emi_weight=emi_weight,
         thermal_reference=thermal_reference,
         emi_reference=emi_reference,
+        thermal_calibration=thermal_calibration,
+        emi_calibration=emi_calibration,
         assessments=assessments,
         max_thermal_peak=max_thermal_peak,
         max_emi_peak=max_emi_peak,

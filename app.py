@@ -41,23 +41,155 @@ def _status_callout(report: RiskReport) -> None:
         st.success(report.summary_text)
 
 
+def _output_mode_label(report: RiskReport) -> str:
+    if report.thermal_calibration.enabled and report.emi_calibration.enabled:
+        return "Calibrated estimates (thermal + EMI)"
+    if report.thermal_calibration.enabled:
+        return "Calibrated estimates (thermal only)"
+    if report.emi_calibration.enabled:
+        return "Calibrated estimates (EMI only)"
+    return "Screening only"
+
+
+def _format_optional(value: float | None, digits: int = 2) -> float | None:
+    if value is None:
+        return None
+    return round(value, digits)
+
+
 def _apply_ui_overrides() -> None:
     st.markdown(
         """
         <style>
-        div[data-baseweb="input"] > div,
-        div[data-baseweb="base-input"] > div,
-        div[data-baseweb="select"] > div {
+        :root {
+            --radius-none: 0px;
+        }
+
+        * {
             border-radius: 0 !important;
         }
 
-        input, textarea {
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="base-input"] > div,
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="popover"] > div,
+        div[data-baseweb="tag"] {
+            border-radius: 0 !important;
+        }
+
+        input, textarea,
+        button,
+        table,
+        thead,
+        tbody,
+        tr,
+        td,
+        th {
+            border-radius: 0 !important;
+        }
+
+        [data-testid="stDataFrame"],
+        [data-testid="stTable"],
+        [data-testid="stMetric"],
+        [data-testid="stExpander"],
+        [data-testid="stSidebar"],
+        [data-testid="stTabs"],
+        [data-testid="stVerticalBlock"],
+        [data-testid="stHorizontalBlock"],
+        [data-testid="stAlert"],
+        [data-testid="stMarkdownContainer"],
+        [data-testid="stPlotlyChart"],
+        [data-testid="stForm"] {
+            border-radius: 0 !important;
+        }
+
+        .stTabs [data-baseweb="tab-list"],
+        .stTabs [data-baseweb="tab"],
+        .stTabs [aria-selected="true"],
+        .stTabs [aria-selected="false"] {
             border-radius: 0 !important;
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
+
+
+def _edit_calibration(scenario: Scenario) -> None:
+    st.sidebar.subheader("Calibration")
+    with st.sidebar.expander("Thermal calibration"):
+        scenario.thermal_calibration.enabled = st.checkbox(
+            "Thermal calibration enabled",
+            value=scenario.thermal_calibration.enabled,
+            key=f"{scenario.name}_thermal_calibration_enabled",
+        )
+        thermal_value = scenario.thermal_calibration.reference_value_w_m2
+        thermal_x = scenario.thermal_calibration.reference_location_x_m
+        thermal_y = scenario.thermal_calibration.reference_location_y_m
+        scenario.thermal_calibration.reference_value_w_m2 = st.number_input(
+            "Thermal reference value [W/m^2]",
+            min_value=0.0,
+            max_value=50000.0,
+            value=float(thermal_value if thermal_value is not None else 0.0),
+            step=10.0,
+            format="%.1f",
+            key=f"{scenario.name}_thermal_reference_value_w_m2",
+        )
+        scenario.thermal_calibration.reference_location_x_m = st.number_input(
+            "Thermal reference x [m]",
+            min_value=0.0,
+            max_value=float(scenario.bus.width_m),
+            value=float(thermal_x if thermal_x is not None else min(0.5 * scenario.bus.width_m, scenario.bus.width_m)),
+            step=0.01,
+            format="%.2f",
+            key=f"{scenario.name}_thermal_reference_x",
+        )
+        scenario.thermal_calibration.reference_location_y_m = st.number_input(
+            "Thermal reference y [m]",
+            min_value=0.0,
+            max_value=float(scenario.bus.height_m),
+            value=float(thermal_y if thermal_y is not None else min(0.5 * scenario.bus.height_m, scenario.bus.height_m)),
+            step=0.01,
+            format="%.2f",
+            key=f"{scenario.name}_thermal_reference_y",
+        )
+
+    with st.sidebar.expander("EMI calibration"):
+        scenario.emi_calibration.enabled = st.checkbox(
+            "EMI calibration enabled",
+            value=scenario.emi_calibration.enabled,
+            key=f"{scenario.name}_emi_calibration_enabled",
+        )
+        emi_value = scenario.emi_calibration.reference_value_uT
+        emi_x = scenario.emi_calibration.reference_location_x_m
+        emi_y = scenario.emi_calibration.reference_location_y_m
+        scenario.emi_calibration.reference_value_uT = st.number_input(
+            "EMI reference value [uT]",
+            min_value=0.0,
+            max_value=1000000.0,
+            value=float(emi_value if emi_value is not None else 0.0),
+            step=50.0,
+            format="%.1f",
+            key=f"{scenario.name}_emi_reference_value_ut",
+        )
+        scenario.emi_calibration.reference_location_x_m = st.number_input(
+            "EMI reference x [m]",
+            min_value=0.0,
+            max_value=float(scenario.bus.width_m),
+            value=float(emi_x if emi_x is not None else min(0.5 * scenario.bus.width_m, scenario.bus.width_m)),
+            step=0.01,
+            format="%.2f",
+            key=f"{scenario.name}_emi_reference_x",
+        )
+        scenario.emi_calibration.reference_location_y_m = st.number_input(
+            "EMI reference y [m]",
+            min_value=0.0,
+            max_value=float(scenario.bus.height_m),
+            value=float(emi_y if emi_y is not None else min(0.5 * scenario.bus.height_m, scenario.bus.height_m)),
+            step=0.01,
+            format="%.2f",
+            key=f"{scenario.name}_emi_reference_y",
+        )
 
 
 def _edit_scenario(base_scenario: Scenario) -> Scenario:
@@ -221,24 +353,57 @@ def _edit_scenario(base_scenario: Scenario) -> Scenario:
                 format="%.2f",
                 key=f"{subsystem_widget_seed}_{subsystem.name}_emi_shielding",
             )
+    _edit_calibration(scenario)
     return scenario
 
 
 def _assessment_table(report: RiskReport) -> pd.DataFrame:
     rows = []
+    thermal_calibrated = report.thermal_calibration.enabled
+    emi_calibrated = report.emi_calibration.enabled
     for assessment in report.assessments:
-        rows.append(
-            {
-                "Subsystem": assessment.name,
-                "Thermal ratio": round(assessment.thermal_ratio, 2),
-                "EMI ratio": round(assessment.emi_ratio, 2),
-                "Combined score": round(assessment.combined_score, 2),
-                "Overall": assessment.overall_state.title(),
-                "Dominant driver": assessment.dominant_driver,
-                "Dominant thruster": assessment.dominant_thruster,
-                "Likely failure mode": assessment.likely_failure_mode,
-            }
-        )
+        row = {
+            "subsystem": assessment.name,
+            "q_proxy_sample": round(assessment.q_proxy_sample, 2),
+            "B_proxy_sample": round(assessment.b_proxy_sample, 2),
+            "thermal_ratio_screening": round(assessment.thermal_ratio_screening, 2),
+            "emi_ratio_screening": round(assessment.emi_ratio_screening, 2),
+            "combined_score": round(assessment.combined_score, 2),
+            "overall_state": assessment.overall_state.title(),
+            "dominant_driver": assessment.dominant_driver,
+            "dominant_thermal_thruster": assessment.dominant_thermal_thruster,
+            "dominant_emi_thruster": assessment.dominant_emi_thruster,
+            "dominant_thruster": assessment.dominant_thruster,
+            "likely_failure_mode": assessment.likely_failure_mode,
+        }
+        if thermal_calibrated:
+            row["q_incident_W_m2"] = _format_optional(assessment.q_incident_w_m2)
+            row["q_after_shield_W_m2"] = _format_optional(assessment.q_after_shield_w_m2)
+            row["thermal_ratio_physical"] = _format_optional(assessment.thermal_ratio_physical)
+        if emi_calibrated:
+            row["B_before_shield_uT"] = _format_optional(assessment.b_before_shield_uT)
+            row["B_after_shield_uT"] = _format_optional(assessment.b_after_shield_uT)
+            row["emi_ratio_physical"] = _format_optional(assessment.emi_ratio_physical)
+        rows.append(row)
+    return pd.DataFrame(rows)
+
+
+def _contribution_table(report: RiskReport, subsystem_name: str) -> pd.DataFrame:
+    assessment = next(assessment for assessment in report.assessments if assessment.name == subsystem_name)
+    rows = []
+    for contribution in assessment.thruster_contributions:
+        row = {
+            "thruster": contribution.thruster_name,
+            "thermal_proxy": round(contribution.thermal_proxy, 3),
+            "thermal_share_pct": round(100.0 * contribution.thermal_fraction, 1),
+            "emi_proxy": round(contribution.emi_proxy, 3),
+            "emi_share_pct": round(100.0 * contribution.emi_fraction, 1),
+        }
+        if contribution.q_incident_w_m2 is not None:
+            row["thermal_incident_W_m2"] = round(contribution.q_incident_w_m2, 2)
+        if contribution.b_before_shield_uT is not None:
+            row["emi_before_shield_uT"] = round(contribution.b_before_shield_uT, 2)
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -402,7 +567,34 @@ def _render_model_overview_tab(report: RiskReport, screening_profile: str) -> No
         "The integration score is normalized against the scenario subsystem limits, not against the map maximum."
     )
 
-    st.markdown("**5. Why this screening model is physically motivated**")
+    st.markdown("**5. Optional calibrated mode**")
+    st.latex(
+        r"""
+        q''_{\mathrm{incident}}(x,y) = C_{\mathrm{th}} q_{\mathrm{proxy}}(x,y),\qquad
+        B_{\mathrm{before\ shield}}(x,y) = C_{\mathrm{emi}} B_{\mathrm{proxy}}(x,y)
+        """
+    )
+    st.write(
+        "Calibrated mode anchors the proxy fields to user-supplied reference data and reports first-order physical estimates."
+    )
+    if report.thermal_calibration.enabled:
+        st.markdown(
+            f"- Thermal anchor: **{report.thermal_calibration.reference_value:.1f} W/m^2** at "
+            f"**({report.thermal_calibration.reference_x_m:.2f} m, {report.thermal_calibration.reference_y_m:.2f} m)**"
+        )
+    if report.emi_calibration.enabled:
+        st.markdown(
+            f"- EMI anchor: **{report.emi_calibration.reference_value:.1f} uT** at "
+            f"**({report.emi_calibration.reference_x_m:.2f} m, {report.emi_calibration.reference_y_m:.2f} m)**"
+        )
+    if not report.thermal_calibration.enabled and not report.emi_calibration.enabled:
+        st.write("Current run is screening-only. Proxy fields remain dimensionless.")
+    else:
+        st.write(
+            "Calibrated outputs are first-order estimates anchored to a single reference point and are most trustworthy near that calibration region."
+        )
+
+    st.markdown("**6. Why this screening model is physically motivated**")
     st.markdown(
         "- Hall thruster plumes are directional, so a plume-aligned coordinate frame is a reasonable first step.\n"
         "- Downrange decay and widening spread capture the main layout effect of plume exposure.\n"
@@ -457,18 +649,34 @@ def main() -> None:
 
     _status_callout(report)
     st.write(scenario.description)
+    if scenario.source_note:
+        st.caption(f"Source note: {scenario.source_note}")
+    output_mode = _output_mode_label(report)
+    assessment_df = _assessment_table(report)
+    if report.thermal_calibration.enabled or report.emi_calibration.enabled:
+        st.info(
+            "Calibrated outputs are first-order estimates anchored to a single reference point. "
+            "Accuracy is highest near that calibration region; screening ratios still drive layout classification."
+        )
 
     summary_col, metrics_col = st.columns(2)
     with summary_col:
         st.write(f"**Current layout state:** {report.overall_state.title()}")
+        st.write(f"**Output mode:** {output_mode}")
         st.write(
             f"**Peak thermal zone:** {report.max_thermal_peak.value:.2f} at "
             f"({report.max_thermal_peak.x_m:.2f} m, {report.max_thermal_peak.y_m:.2f} m)"
         )
+        if report.thermal_calibration.scale_factor is not None:
+            peak_thermal_w_m2 = report.max_thermal_peak.value * report.thermal_calibration.scale_factor
+            st.write(f"**Peak thermal estimate:** {peak_thermal_w_m2:.1f} W/m^2 incident")
         st.write(
             f"**Peak EMI zone:** {report.max_emi_peak.value:.2f} at "
             f"({report.max_emi_peak.x_m:.2f} m, {report.max_emi_peak.y_m:.2f} m)"
         )
+        if report.emi_calibration.scale_factor is not None:
+            peak_emi_uT = report.max_emi_peak.value * report.emi_calibration.scale_factor
+            st.write(f"**Peak EMI estimate:** {peak_emi_uT:.1f} uT before shielding")
     with metrics_col:
         st.write(f"**Score profile:** {screening_profile}")
         st.write(f"**Critical bus area:** {report.critical_area_fraction:.0%}")
@@ -476,12 +684,25 @@ def main() -> None:
         st.write(
             f"**Worst combined-risk point:** ({report.max_combined_peak.x_m:.2f} m, {report.max_combined_peak.y_m:.2f} m)"
         )
+        if report.thermal_calibration.enabled:
+            st.write(
+                f"**Thermal calibration:** {report.thermal_calibration.scale_factor:.2f} W/m^2 per proxy unit"
+            )
+        if report.emi_calibration.enabled:
+            st.write(
+                f"**EMI calibration:** {report.emi_calibration.scale_factor:.2f} uT per proxy unit"
+            )
 
     tab_thermal, tab_emi, tab_combined, tab_physics = st.tabs(
         ["Thermal map", "EMI map", "Integration score", "Model overview"]
     )
     with tab_thermal:
-        st.write("Thermal loading proxy across the bus.")
+        if report.thermal_calibration.enabled:
+            st.write(
+                "Thermal loading proxy across the bus. Calibrated incident estimates are listed in the subsystem table."
+            )
+        else:
+            st.write("Thermal loading proxy across the bus.")
         st.plotly_chart(
             make_field_figure(
                 scenario,
@@ -498,10 +719,15 @@ def main() -> None:
         )
 
     with tab_emi:
-        st.write(
-            "EMI exposure proxy across the bus. Highest values occur near the thrusters "
-            "and along the directional field tail."
-        )
+        if report.emi_calibration.enabled:
+            st.write(
+                "EMI exposure proxy across the bus. Calibrated before-shield estimates are listed in the subsystem table."
+            )
+        else:
+            st.write(
+                "EMI exposure proxy across the bus. Highest values occur near the thrusters "
+                "and along the directional field tail."
+            )
         st.plotly_chart(
             make_field_figure(
                 scenario,
@@ -576,20 +802,43 @@ def main() -> None:
     bottom_left, bottom_right = st.columns([1.4, 1.0])
     with bottom_left:
         st.subheader("Subsystem Exposure Summary")
-        st.dataframe(_assessment_table(report), use_container_width=True, hide_index=True)
+        st.dataframe(assessment_df, use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download subsystem metrics CSV",
+            data=assessment_df.to_csv(index=False),
+            file_name=f"{scenario.name.lower().replace(' ', '_')}_subsystem_metrics.csv",
+            mime="text/csv",
+        )
+        st.subheader("Thruster Contribution Breakdown")
+        selected_subsystem = st.selectbox(
+            "Subsystem for breakdown",
+            [assessment.name for assessment in report.assessments],
+            key="contribution_subsystem",
+        )
+        st.dataframe(
+            _contribution_table(report, selected_subsystem),
+            use_container_width=True,
+            hide_index=True,
+        )
     with bottom_right:
         st.subheader("Model Notes")
-        st.write(
-            "This is a screening model with user-configured subsystem limits. "
-            "Outputs are dimensionless indices."
-        )
+        if report.thermal_calibration.enabled or report.emi_calibration.enabled:
+            st.write(
+                "This run includes calibrated first-order estimates anchored to user-supplied reference data. "
+                "The screening ratios are still the primary layout metric."
+            )
+        else:
+            st.write(
+                "This is a screening model with user-configured subsystem limits. "
+                "Outputs are dimensionless indices."
+            )
         with st.expander("Model assumptions"):
             st.markdown(
                 "- Thermal loading uses directional plume decay plus local near-field heating.\n"
                 "- EMI uses a dipole-like near-field term plus a directional tail.\n"
                 "- Overlapping fields accumulate linearly.\n"
                 "- Shielding is applied as a local reduction factor on subsystem exposure.\n"
-                "- Outputs are dimensionless indices."
+                "- Calibrated mode anchors the proxy field to one reference point for first-order physical estimates."
             )
 
 

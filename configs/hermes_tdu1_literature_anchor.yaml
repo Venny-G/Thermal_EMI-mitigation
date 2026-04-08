@@ -1,0 +1,68 @@
+name: HERMeS TDU-1 9.4 kW (Literature Anchor)
+description: >
+  Single-thruster demonstration preset using the NASA HERMeS TDU-1 nominal 9.4 kW / 300 V
+  operating point as the hardware anchor. Calibrated outputs remain first-order estimates.
+source_note: >
+  Operating point is based on NASA HERMeS TDU-1 thermal characterization at 9.4 kW / 300 V
+  (Huang et al., Non-Contact Thermal Characterization of NASA's HERMeS Hall Thruster,
+  NASA 20150021868; and Jorns et al., Near-Surface Plasma Characterization of the 12.5-kW
+  NASA TDU1 Hall Thruster, NASA 20150021867). The EMI anchor is informed by reported
+  Hall-thruster-like magnetic field sweeps up to 325 G in Hall et al., IEPC 2019-300
+  (NASA 20190032078). The thermal W/m^2 anchor is a representative engineering value for this
+  demo because the source paper reports internal heat loads and temperatures rather than a
+  direct external component heat-flux map.
+thermal_calibration_enabled: true
+thermal_reference_value_W_m2: 180.0
+thermal_reference_location_x_m: 0.65
+thermal_reference_location_y_m: 0.53
+emi_calibration_enabled: true
+emi_reference_value_uT: 8100.0
+emi_reference_location_x_m: 0.38
+emi_reference_location_y_m: 0.53
+bus:
+  width_m: 1.30
+  height_m: 1.05
+  grid_resolution: 260
+thrusters:
+  - name: HERMeS TDU-1
+    x_m: 0.28
+    y_m: 0.53
+    orientation_deg: 0.0
+    power_kw: 9.4
+    plume_half_angle_deg: 18.0
+    thermal_decay_m: 0.30
+    emi_decay_m: 0.20
+subsystems:
+  - name: Avionics Bay
+    x_m: 0.88
+    y_m: 0.53
+    thermal_limit: 2.20
+    emi_limit: 1.15
+    thermal_limit_W_m2: 140.0
+    emi_limit_uT: 180.0
+    criticality: 1.00
+    thermal_shielding: 0.10
+    emi_shielding: 0.15
+    failure_mode: Control electronics upset or intermittent resets.
+  - name: Battery Pack
+    x_m: 0.96
+    y_m: 0.22
+    thermal_limit: 1.80
+    emi_limit: 1.65
+    thermal_limit_W_m2: 125.0
+    emi_limit_uT: 240.0
+    criticality: 0.90
+    thermal_shielding: 0.10
+    emi_shielding: 0.05
+    failure_mode: Thermal margin loss and accelerated cell aging.
+  - name: Star Tracker
+    x_m: 0.98
+    y_m: 0.84
+    thermal_limit: 2.00
+    emi_limit: 1.00
+    thermal_limit_W_m2: 110.0
+    emi_limit_uT: 150.0
+    criticality: 0.95
+    thermal_shielding: 0.05
+    emi_shielding: 0.10
+    failure_mode: Attitude sensing noise or loss of lock.

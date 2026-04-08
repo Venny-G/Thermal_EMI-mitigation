@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 import math
 
 import numpy as np
@@ -15,6 +15,26 @@ class BusConfig:
     width_m: float
     height_m: float
     grid_resolution: int = 220
+
+
+@dataclass(slots=True)
+class ThermalCalibrationConfig:
+    """Optional thermal calibration anchor for converting proxy values to W/m^2."""
+
+    enabled: bool = False
+    reference_value_w_m2: float | None = None
+    reference_location_x_m: float | None = None
+    reference_location_y_m: float | None = None
+
+
+@dataclass(slots=True)
+class EmiCalibrationConfig:
+    """Optional EMI calibration anchor for converting proxy values to uT."""
+
+    enabled: bool = False
+    reference_value_uT: float | None = None
+    reference_location_x_m: float | None = None
+    reference_location_y_m: float | None = None
 
 
 @dataclass(slots=True)
@@ -51,6 +71,8 @@ class SubsystemConfig:
     criticality: float = 1.0
     thermal_shielding: float = 0.0
     emi_shielding: float = 0.0
+    thermal_limit_w_m2: float | None = None
+    emi_limit_uT: float | None = None
     failure_mode: str = ""
 
 
@@ -63,6 +85,9 @@ class Scenario:
     bus: BusConfig
     thrusters: list[ThrusterConfig]
     subsystems: list[SubsystemConfig]
+    source_note: str = ""
+    thermal_calibration: ThermalCalibrationConfig = field(default_factory=ThermalCalibrationConfig)
+    emi_calibration: EmiCalibrationConfig = field(default_factory=EmiCalibrationConfig)
 
 
 def make_grid(bus: BusConfig) -> tuple[np.ndarray, np.ndarray]:
